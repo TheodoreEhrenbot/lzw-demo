@@ -1,4 +1,4 @@
-module Main exposing (main, lzwCompress)
+module Main exposing (main, lzwCompress, lzwDecompress)
 
 import Browser
 import Dict exposing (Dict)
@@ -126,6 +126,98 @@ lzwCompress bytes =
                             result.output
             in
             ( finalOutput, result.dict )
+
+
+
+-- LZW DECOMPRESSION
+-- Inverts lzwCompress: given a list of 9-bit codes, returns the original bytes.
+-- Returns Nothing only if the code stream is invalid (should never happen for
+-- output produced by lzwCompress).
+
+
+lzwDecompress : List Int -> Maybe (List Int)
+lzwDecompress codes =
+    let
+        initDict : Dict Int (List Int)
+        initDict =
+            List.foldl
+                (\b d -> Dict.insert (b + 1) [ b ] d)
+                Dict.empty
+                (List.range 0 255)
+    in
+    case codes of
+        [] ->
+            Just []
+
+        first :: rest ->
+            case Dict.get first initDict of
+                Nothing ->
+                    Nothing
+
+                Just firstEntry ->
+                    let
+                        result =
+                            List.foldl
+                                (\code state ->
+                                    case state.err of
+                                        Just _ ->
+                                            state
+
+                                        Nothing ->
+                                            let
+                                                maybeEntry =
+                                                    case Dict.get code state.dict of
+                                                        Just e ->
+                                                            Just e
+
+                                                        Nothing ->
+                                                            -- Special case: code equals the next code to be
+                                                            -- added. Entry is prev ++ [prev[0]].
+                                                            if code == state.nextCode then
+                                                                case state.prev of
+                                                                    [] ->
+                                                                        Nothing
+
+                                                                    p :: _ ->
+                                                                        Just (state.prev ++ [ p ])
+
+                                                            else
+                                                                Nothing
+                                            in
+                                            case maybeEntry of
+                                                Nothing ->
+                                                    { state | err = Just "invalid code" }
+
+                                                Just entry ->
+                                                    let
+                                                        newEntry =
+                                                            state.prev ++ List.take 1 entry
+
+                                                        newDict =
+                                                            Dict.insert state.nextCode newEntry state.dict
+                                                    in
+                                                    { state
+                                                        | prev = entry
+                                                        , dict = newDict
+                                                        , nextCode = state.nextCode + 1
+                                                        , output = state.output ++ entry
+                                                        , err = Nothing
+                                                    }
+                                )
+                                { prev = firstEntry
+                                , dict = initDict
+                                , nextCode = 257
+                                , output = firstEntry
+                                , err = Nothing
+                                }
+                                rest
+                    in
+                    case result.err of
+                        Just _ ->
+                            Nothing
+
+                        Nothing ->
+                            Just result.output
 
 
 
