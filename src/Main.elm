@@ -1,4 +1,4 @@
-module Main exposing (main, lzwCompress, lzwDecompress)
+module Main exposing (main, lzwCompress, lzwDecompress, maxDictCode)
 
 import Browser
 import Dict exposing (Dict)
@@ -44,6 +44,14 @@ update msg model =
 
 -- LZW COMPRESSION
 -- Returns (encoded codes, final dictionary)
+-- Uses a fixed 9-bit code space: codes 1..256 are single bytes,
+-- codes 257..maxDictCode are learned entries. Once the dictionary
+-- is full we freeze it and keep encoding with what we have.
+
+
+maxDictCode : Int
+maxDictCode =
+    512
 
 
 lzwCompress : List Int -> ( List Int, Dict Int (List Int) )
@@ -84,15 +92,6 @@ lzwCompress bytes =
 
                                 Nothing ->
                                     let
-                                        newCode =
-                                            state.nextCode
-
-                                        newDict =
-                                            Dict.insert newCode newW state.dict
-
-                                        newRevDict =
-                                            Dict.insert newW newCode state.revDict
-
                                         outputCode =
                                             case Dict.get state.w state.revDict of
                                                 Just c ->
@@ -100,12 +99,23 @@ lzwCompress bytes =
 
                                                 Nothing ->
                                                     0
+
+                                        -- Only grow the dictionary while there is room
+                                        ( newDict, newRevDict, newNextCode ) =
+                                            if state.nextCode <= maxDictCode then
+                                                ( Dict.insert state.nextCode newW state.dict
+                                                , Dict.insert newW state.nextCode state.revDict
+                                                , state.nextCode + 1
+                                                )
+
+                                            else
+                                                ( state.dict, state.revDict, state.nextCode )
                                     in
                                     { state
                                         | w = [ byte ]
                                         , dict = newDict
                                         , revDict = newRevDict
-                                        , nextCode = newCode + 1
+                                        , nextCode = newNextCode
                                         , output = state.output ++ [ outputCode ]
                                     }
                         )
@@ -190,16 +200,20 @@ lzwDecompress codes =
 
                                                 Just entry ->
                                                     let
-                                                        newEntry =
-                                                            state.prev ++ List.take 1 entry
+                                                        -- Only grow the dictionary while there is room
+                                                        ( newDict, newNextCode ) =
+                                                            if state.nextCode <= maxDictCode then
+                                                                ( Dict.insert state.nextCode (state.prev ++ List.take 1 entry) state.dict
+                                                                , state.nextCode + 1
+                                                                )
 
-                                                        newDict =
-                                                            Dict.insert state.nextCode newEntry state.dict
+                                                            else
+                                                                ( state.dict, state.nextCode )
                                                     in
                                                     { state
                                                         | prev = entry
                                                         , dict = newDict
-                                                        , nextCode = state.nextCode + 1
+                                                        , nextCode = newNextCode
                                                         , output = state.output ++ entry
                                                         , err = Nothing
                                                     }
