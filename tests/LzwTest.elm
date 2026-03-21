@@ -93,33 +93,33 @@ suite =
                         |> Expect.equal True
                         |> Expect.onFail "a code exceeded maxDictCode"
 
-            , fuzz longByteListFuzzer "all output codes are >= 1" <|
+            , fuzz longByteListFuzzer "all output codes are >= 0" <|
                 \bytes ->
                     bytes
                         |> lzwCompress
                         |> Tuple.first
-                        |> List.all (\c -> c >= 1)
+                        |> List.all (\c -> c >= 0)
                         |> Expect.equal True
 
-            , fuzz longByteListFuzzer "dict never contains more than maxDictCode entries" <|
+            , fuzz longByteListFuzzer "dict never contains more than maxDictCode+1 entries" <|
                 \bytes ->
                     bytes
                         |> lzwCompress
                         |> Tuple.second
                         |> Dict.size
-                        |> Expect.atMost maxDictCode
+                        |> Expect.atMost (maxDictCode + 1)
 
-            , test "dict size is exactly maxDictCode when input cycles all 256 bytes twice" <|
+            , test "dict size is maxDictCode+1 when input cycles all 256 bytes twice" <|
                 \_ ->
-                    -- First cycle (0..255): adds pairs [0,1],[1,2],...,[254,255] → codes 257..511 (255 entries)
-                    -- First byte of second cycle (0): adds [255,0] → code 512 (1 entry), dict now full
+                    -- First cycle (0..255): adds pairs [0,1],[1,2],...,[254,255] → codes 256..510 (255 entries)
+                    -- First byte of second cycle (0): adds [255,0] → code 511 = maxDictCode, dict now full
                     -- Remaining second cycle: dict frozen, no more entries added
-                    -- Total: 256 base + 256 learned = 512 = maxDictCode
+                    -- Total: 256 base + 256 learned = 512 entries = maxDictCode + 1
                     List.range 0 255 ++ List.range 0 255
                         |> lzwCompress
                         |> Tuple.second
                         |> Dict.size
-                        |> Expect.equal maxDictCode
+                        |> Expect.equal (maxDictCode + 1)
 
             , fuzz repetitiveFuzzer "round-trip still holds after dict freeze" <|
                 \bytes ->
@@ -166,17 +166,17 @@ suite =
                             bytes |> lzwCompress |> Tuple.second
                     in
                     List.range 0 255
-                        |> List.all (\b -> Dict.get (b + 1) dict == Just [ b ])
+                        |> List.all (\b -> Dict.get b dict == Just [ b ])
                         |> Expect.equal True
 
-            , fuzz longByteListFuzzer "learned entries (>=257) all have length >= 2" <|
+            , fuzz longByteListFuzzer "learned entries (>=256) all have length >= 2" <|
                 \bytes ->
                     let
                         dict =
                             bytes |> lzwCompress |> Tuple.second
                     in
                     Dict.toList dict
-                        |> List.filter (\( k, _ ) -> k >= 257)
+                        |> List.filter (\( k, _ ) -> k >= 256)
                         |> List.all (\( _, v ) -> List.length v >= 2)
                         |> Expect.equal True
 
@@ -204,34 +204,38 @@ suite =
                 \_ ->
                     lzwDecompress [] |> Expect.equal (Just [])
 
-            , test "byte 65 ('A') -> code 66" <|
+            , test "byte 65 ('A') -> code 65" <|
                 \_ ->
-                    lzwCompress [ 65 ] |> Tuple.first |> Expect.equal [ 66 ]
+                    lzwCompress [ 65 ] |> Tuple.first |> Expect.equal [ 65 ]
 
-            , test "byte 0 -> code 1" <|
+            , test "byte 110 ('n') -> code 110" <|
                 \_ ->
-                    lzwCompress [ 0 ] |> Tuple.first |> Expect.equal [ 1 ]
+                    lzwCompress [ 110 ] |> Tuple.first |> Expect.equal [ 110 ]
 
-            , test "byte 255 -> code 256" <|
+            , test "byte 0 -> code 0" <|
                 \_ ->
-                    lzwCompress [ 255 ] |> Tuple.first |> Expect.equal [ 256 ]
+                    lzwCompress [ 0 ] |> Tuple.first |> Expect.equal [ 0 ]
 
-            , test "ABABABAB encodes to [66, 67, 257, 259, 67]" <|
+            , test "byte 255 -> code 255" <|
+                \_ ->
+                    lzwCompress [ 255 ] |> Tuple.first |> Expect.equal [ 255 ]
+
+            , test "ABABABAB encodes to [65, 66, 256, 258, 66]" <|
                 \_ ->
                     lzwCompress [ 65, 66, 65, 66, 65, 66, 65, 66 ]
                         |> Tuple.first
-                        |> Expect.equal [ 66, 67, 257, 259, 67 ]
+                        |> Expect.equal [ 65, 66, 256, 258, 66 ]
 
             , test "ABABABAB round-trips" <|
                 \_ ->
                     roundTrip [ 65, 66, 65, 66, 65, 66, 65, 66 ]
                         |> Expect.equal (Just [ 65, 66, 65, 66, 65, 66, 65, 66 ])
 
-            , test "ABABABAB dict[257] = AB" <|
+            , test "ABABABAB dict[256] = AB" <|
                 \_ ->
                     lzwCompress [ 65, 66, 65, 66, 65, 66, 65, 66 ]
                         |> Tuple.second
-                        |> Dict.get 257
+                        |> Dict.get 256
                         |> Expect.equal (Just [ 65, 66 ])
 
             , test "all 256 distinct bytes round-trip" <|

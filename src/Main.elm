@@ -44,14 +44,14 @@ update msg model =
 
 -- LZW COMPRESSION
 -- Returns (encoded codes, final dictionary)
--- Uses a fixed 9-bit code space: codes 1..256 are single bytes,
--- codes 257..maxDictCode are learned entries. Once the dictionary
+-- Uses a fixed 9-bit code space: codes 0..255 are single bytes,
+-- codes 256..maxDictCode are learned entries. Once the dictionary
 -- is full we freeze it and keep encoding with what we have.
 
 
 maxDictCode : Int
 maxDictCode =
-    512
+    511
 
 
 lzwCompress : List Int -> ( List Int, Dict Int (List Int) )
@@ -61,7 +61,7 @@ lzwCompress bytes =
         initDict : Dict Int (List Int)
         initDict =
             List.foldl
-                (\b d -> Dict.insert (b + 1) [ b ] d)
+                (\b d -> Dict.insert b [ b ] d)
                 Dict.empty
                 (List.range 0 255)
 
@@ -69,7 +69,7 @@ lzwCompress bytes =
         initRevDict : Dict (List Int) Int
         initRevDict =
             List.foldl
-                (\b d -> Dict.insert [ b ] (b + 1) d)
+                (\b d -> Dict.insert [ b ] b d)
                 Dict.empty
                 (List.range 0 255)
     in
@@ -122,7 +122,7 @@ lzwCompress bytes =
                         { w = [ first ]
                         , dict = initDict
                         , revDict = initRevDict
-                        , nextCode = 257
+                        , nextCode = 256
                         , output = []
                         }
                         rest
@@ -151,7 +151,7 @@ lzwDecompress codes =
         initDict : Dict Int (List Int)
         initDict =
             List.foldl
-                (\b d -> Dict.insert (b + 1) [ b ] d)
+                (\b d -> Dict.insert b [ b ] d)
                 Dict.empty
                 (List.range 0 255)
     in
@@ -220,7 +220,7 @@ lzwDecompress codes =
                                 )
                                 { prev = firstEntry
                                 , dict = initDict
-                                , nextCode = 257
+                                , nextCode = 256
                                 , output = firstEntry
                                 , err = Nothing
                                 }
@@ -315,10 +315,10 @@ view model =
         outputBitCount =
             codesToBitCount codes
 
-        -- Only show the entries above 256 (the learned ones)
+        -- Only show the learned entries (codes 256+)
         learnedEntries =
             Dict.toList dict
-                |> List.filter (\( k, _ ) -> k > 256)
+                |> List.filter (\( k, _ ) -> k >= 256)
                 |> List.sortBy (\( k, _ ) -> -k)
 
         compressionRatio =
@@ -385,7 +385,7 @@ view model =
                     ]
                 ]
         , footer []
-            [ text "LZW: 8-bit input, 9-bit codes (256 base symbols + codes 257–512)" ]
+            [ text "LZW: 8-bit input, 9-bit codes (base symbols 0–255, learned entries 256–511)" ]
         ]
 
 
