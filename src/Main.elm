@@ -23,7 +23,7 @@ type alias Model =
 
 init : Model
 init =
-    { input = "ABABABAB" }
+    { input = "A man, a plan, a canal: Panama." }
 
 
 
